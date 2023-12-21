@@ -1,6 +1,5 @@
 const express = require("express");
 const sharp = require("sharp");
-const fs = require("fs");
 const sizeOf = require("image-size");
 const multer = require("multer");
 const upload = multer();
@@ -8,12 +7,11 @@ const path = require("path");
 require("dotenv").config();
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const axios = require("axios");
 
 const app = express();
 app.use(cors());
 
-if (!process.env.UPLOAD_PATH || !process.env.IMAGE_DIRECTORY) {
+if (!process.env.IMAGE_DIRECTORY) {
   throw new Error(
     "Environment variables for paths are not properly configured."
   );
@@ -63,41 +61,60 @@ function validateFileType(file) {
   return allowedImageTypes.includes(file.mimetype);
 }
 
-app.post("/upload-image", upload.single("image"), async (req, res) => {
+// ... (existing code)
+
+// Update the route to handle array of images
+app.post("/upload-images", upload.array("images", 10), async (req, res) => {
   try {
-    if (!req.file || !validateFileType(req.file)) {
-      throw new Error("Please upload a valid image file.");
+    if (!req.files || req.files.length === 0) {
+      throw new Error("Please upload at least one valid image file.");
     }
 
-    const inputImageBuffer = req.file.buffer;
-
-    const originalFilename = req.file.originalname;
-    const extName = path.extname(originalFilename);
-
     const outputDirectory = process.env.IMAGE_DIRECTORY;
-
-    const compressedFileName = `${originalFilename}`;
-    const compressedImagePath = path.join(outputDirectory, compressedFileName);
-
-    const { width, height } = await getImageDimensions(inputImageBuffer);
-    const maxHeight = Math.floor(height / 3);
-    const maxWidth = Math.floor(width / 3);
     const quality = 80;
 
-    // Process the image from buffer and save the compressed version
-    await optimizeImage(
-      inputImageBuffer, // Pass buffer instead of file path
-      compressedImagePath,
-      maxWidth,
-      maxHeight,
-      quality
-    );
+    const imageProcessingPromises = req.files.map(async (file) => {
+      if (!validateFileType(file)) {
+        throw new Error(`Invalid file type: ${file.originalname}`);
+      }
 
-    const publicURL = `http://localhost:3000/images/${compressedFileName}`;
+      const inputImageBuffer = file.buffer;
+      const originalFilename = file.originalname;
+      const extName = path.extname(originalFilename);
+
+      const compressedFileName = `${originalFilename}`;
+      const compressedImagePath = path.join(
+        outputDirectory,
+        compressedFileName
+      );
+
+      const { width, height } = await getImageDimensions(inputImageBuffer);
+      const maxHeight = Math.floor(height / 3);
+      const maxWidth = Math.floor(width / 3);
+
+      // Process each image from buffer and save the compressed version
+      await optimizeImage(
+        inputImageBuffer,
+        compressedImagePath,
+        maxWidth,
+        maxHeight,
+        quality
+      );
+
+      const publicURL = `http://localhost:3000/images/${compressedFileName}`;
+      return {
+        originalFilename,
+        downloadLink: publicURL,
+      };
+    });
+
+    // Execute all image processing promises
+    const processedImages = await Promise.all(imageProcessingPromises);
+
     res.status(200).json({
-      message: "Image saved at:",
+      message: "Images saved at:",
       outputDirectory,
-      downloadLink: publicURL,
+      processedImages,
     });
   } catch (error) {
     res.status(500).json({
@@ -106,6 +123,8 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
     });
   }
 });
+
+// ... (existing code)
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
