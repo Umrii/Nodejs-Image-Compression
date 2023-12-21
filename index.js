@@ -7,8 +7,11 @@ const upload = multer();
 const path = require("path");
 require("dotenv").config();
 const bodyParser = require("body-parser");
+const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
+app.use(cors());
 
 if (!process.env.UPLOAD_PATH || !process.env.IMAGE_DIRECTORY) {
   throw new Error(
@@ -103,3 +106,4 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
+app.options("/upload-image", cors());
