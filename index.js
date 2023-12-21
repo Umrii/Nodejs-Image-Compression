@@ -86,7 +86,6 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
       const inputImageBuffer = file.buffer;
       const originalFilename = file.originalname;
 
-      const { width, height } = await getImageDimensions(inputImageBuffer);
       const imageBufferLength = inputImageBuffer.length;
 
       if (imageBufferLength <= maxSizeInBytes) {
@@ -110,6 +109,7 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
           throw new Error(`Error optimizing image: ${error}`);
         }
       } else {
+        const { width, height } = await getImageDimensions(inputImageBuffer);
         // Process larger images
         const compressedFileName = `${originalFilename}`;
         const compressedImagePath = path.join(
