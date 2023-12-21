@@ -30,7 +30,12 @@ async function optimizeImage(
     const { format } = metadata;
 
     await sharp(inputPath)
-      .resize({ width: maxWidth, height: maxHeight, fit: sharp.fit.inside })
+      .rotate()
+      .resize({
+        width: maxWidth,
+        height: maxHeight,
+        fit: sharp.fit.inside,
+      })
       .toFormat(metadata.format, { quality })
       .toFile(outputPath);
 
@@ -61,10 +66,8 @@ function validateFileType(file) {
   return allowedImageTypes.includes(file.mimetype);
 }
 
-// ... (existing code)
-
 // Update the route to handle array of images
-app.post("/upload-images", upload.array("images", 10), async (req, res) => {
+app.post("/upload-images", upload.array("images"), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       throw new Error("Please upload at least one valid image file.");
