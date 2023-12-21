@@ -1,6 +1,7 @@
 const express = require("express");
 const sharp = require("sharp");
 const sizeOf = require("image-size");
+const fs = require("fs");
 const multer = require("multer");
 const upload = multer();
 const path = require("path");
@@ -75,6 +76,7 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
 
     const outputDirectory = process.env.IMAGE_DIRECTORY;
     const quality = 80;
+    const maxSizeInBytes = 200 * 1024;
 
     const imageProcessingPromises = req.files.map(async (file) => {
       if (!validateFileType(file)) {
@@ -83,34 +85,57 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
 
       const inputImageBuffer = file.buffer;
       const originalFilename = file.originalname;
-      const extName = path.extname(originalFilename);
-
-      const compressedFileName = `${originalFilename}`;
-      const compressedImagePath = path.join(
-        outputDirectory,
-        compressedFileName
-      );
 
       const { width, height } = await getImageDimensions(inputImageBuffer);
-      const maxHeight = Math.floor(height / 3);
-      const maxWidth = Math.floor(width / 3);
+      const imageBufferLength = inputImageBuffer.length;
 
-      // Process each image from buffer and save the compressed version
-      await optimizeImage(
-        inputImageBuffer,
-        compressedImagePath,
-        maxWidth,
-        maxHeight,
-        quality
-      );
+      if (imageBufferLength <= maxSizeInBytes) {
+        // For smaller images, save in the same directory as compressed images
+        try {
+          const compressedFileName = `${originalFilename}`;
+          const compressedImagePath = path.join(
+            outputDirectory,
+            compressedFileName
+          );
+          // Save the smaller image to the directory for compressed images
+          fs.writeFileSync(compressedImagePath, inputImageBuffer);
+          console.log(`Image optimized: ${compressedImagePath}`);
 
-      const publicURL = `http://localhost:3000/images/${compressedFileName}`;
-      return {
-        originalFilename,
-        downloadLink: publicURL,
-      };
+          const publicURL = `http://localhost:3000/images/${compressedFileName}`;
+          return {
+            originalFilename,
+            downloadLink: publicURL,
+          };
+        } catch (error) {
+          throw new Error(`Error optimizing image: ${error}`);
+        }
+      } else {
+        // Process larger images
+        const compressedFileName = `${originalFilename}`;
+        const compressedImagePath = path.join(
+          outputDirectory,
+          compressedFileName
+        );
+
+        const maxHeight = Math.floor(height / 3);
+        const maxWidth = Math.floor(width / 3);
+
+        // Process each image from buffer and save the compressed version
+        await optimizeImage(
+          inputImageBuffer,
+          compressedImagePath,
+          maxWidth,
+          maxHeight,
+          quality
+        );
+
+        const publicURL = `http://localhost:3000/images/${compressedFileName}`;
+        return {
+          originalFilename,
+          downloadLink: publicURL,
+        };
+      }
     });
-
     // Execute all image processing promises
     const processedImages = await Promise.all(imageProcessingPromises);
 
@@ -127,7 +152,6 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
   }
 });
 
-// ... (existing code)
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
