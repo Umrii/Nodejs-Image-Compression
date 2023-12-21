@@ -41,13 +41,16 @@ async function optimizeImage(
     throw new Error(`Error optimizing image: ${error}`);
   }
 }
-// retrieve image height asynchronously
-async function getImageHeight(inputImageBuffer) {
+// retrieve image height and width asynchronously
+async function getImageDimensions(inputImageBuffer) {
   try {
     const dimensions = sizeOf(inputImageBuffer);
-    return dimensions.height;
+    return {
+      width: dimensions.width,
+      height: dimensions.height,
+    };
   } catch (error) {
-    throw new Error(`Error getting image height: ${error}`);
+    throw new Error(`Error getting image dimensions: ${error}`);
   }
 }
 app.use("/images", express.static(process.env.IMAGE_DIRECTORY));
@@ -73,12 +76,12 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
 
     const outputDirectory = process.env.IMAGE_DIRECTORY;
 
-    const compressedFileName = `compressed_${Date.now()}${extName}`;
+    const compressedFileName = `${originalFilename}`;
     const compressedImagePath = path.join(outputDirectory, compressedFileName);
 
-    const height = await getImageHeight(inputImageBuffer); // Pass buffer instead of file path
-    const maxWidth = 600;
-    const maxHeight = Math.floor(height / 1.1);
+    const { width, height } = await getImageDimensions(inputImageBuffer);
+    const maxHeight = Math.floor(height / 3);
+    const maxWidth = Math.floor(width / 3);
     const quality = 80;
 
     // Process the image from buffer and save the compressed version
