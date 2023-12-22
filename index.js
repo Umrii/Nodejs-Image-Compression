@@ -8,10 +8,15 @@ const path = require("path");
 require("dotenv").config();
 const bodyParser = require("body-parser");
 const cors = require("cors");
-
+const baseURL = process.env.BASE_URL;
 const app = express();
-app.use(cors());
 
+function setupMiddleware() {
+  app.use(cors());
+  app.use("/images", express.static(process.env.IMAGE_DIRECTORY));
+  app.use(bodyParser.urlencoded({ extended: true }));
+  app.options("/upload-image", cors());
+}
 if (!process.env.IMAGE_DIRECTORY) {
   throw new Error(
     "Environment variables for paths are not properly configured."
@@ -57,10 +62,13 @@ async function getImageDimensions(inputImageBuffer) {
     throw new Error(`Error getting image dimensions: ${error}`);
   }
 }
-app.use("/images", express.static(process.env.IMAGE_DIRECTORY));
-app.use(bodyParser.urlencoded({ extended: true }));
 
-const allowedImageTypes = ["image/jpeg", "image/png", "image/gif"]; // Add more as needed
+const allowedImageTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "application/pdf",
+]; // Add more as needed
 
 // Function to validate file type
 function validateFileType(file) {
@@ -73,7 +81,6 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
     if (!req.files || req.files.length === 0) {
       throw new Error("Please upload at least one valid image file.");
     }
-
     const outputDirectory = process.env.IMAGE_DIRECTORY;
     const quality = 80;
     const maxSizeInBytes = 200 * 1024;
@@ -81,6 +88,16 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
     const imageProcessingPromises = req.files.map(async (file) => {
       if (!validateFileType(file)) {
         throw new Error(`Invalid file type: ${file.originalname}`);
+      }
+      if (file.mimetype === "application/pdf") {
+        const publicURL = `${baseURL}${file.originalname}`;
+        const pdfFilePath = path.join(outputDirectory, file.originalname);
+        fs.writeFileSync(pdfFilePath, file.buffer);
+        console.log(`PDF saved: ${pdfFilePath}`);
+        return {
+          originalFilename: file.originalname,
+          downloadLink: publicURL,
+        };
       }
 
       const inputImageBuffer = file.buffer;
@@ -100,7 +117,7 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
           fs.writeFileSync(compressedImagePath, inputImageBuffer);
           console.log(`Image optimized: ${compressedImagePath}`);
 
-          const publicURL = `http://localhost:3000/images/${compressedFileName}`;
+          const publicURL = `${baseURL}${compressedFileName}`;
           return {
             originalFilename,
             downloadLink: publicURL,
@@ -129,7 +146,7 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
           quality
         );
 
-        const publicURL = `http://localhost:3000/images/${compressedFileName}`;
+        const publicURL = `${baseURL}${compressedFileName}`;
         return {
           originalFilename,
           downloadLink: publicURL,
@@ -151,7 +168,7 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
     });
   }
 });
-
+setupMiddleware();
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
