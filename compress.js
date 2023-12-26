@@ -18,13 +18,33 @@ async function compressPDF(originalFilename, inputBuffer) {
         console.error(`Error compressing PDF: ${stderr}`);
         reject(error);
       } else {
-        resolve(path.join(outputDirectory, originalFilename));
+        const compressedFilePath = path.join(outputDirectory, outputFileName);
+        resolve(compressedFilePath);
         const publicURL = `${baseURL}${originalFilename}`;
         console.log("Pdf Link", publicURL);
       }
     });
 
-    streamifier.createReadStream(inputBuffer).pipe(pdfProcessor.stdin);
+    pdfProcessor.stdin.on("error", (err) => {
+      console.error("Error writing to Ghostscript:", err);
+      reject(err);
+    });
+
+    pdfProcessor.on("exit", (code, signal) => {
+      if (code !== 0) {
+        console.error(
+          `Ghostscript process exited with code ${code} and signal ${signal}`
+        );
+        reject(
+          new Error(
+            `Ghostscript process exited with code ${code} and signal ${signal}`
+          )
+        );
+      }
+    });
+
+    const inputStream = streamifier.createReadStream(inputBuffer);
+    inputStream.pipe(pdfProcessor.stdin);
   });
 }
 
