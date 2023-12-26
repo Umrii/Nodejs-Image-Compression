@@ -10,13 +10,11 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const baseURL = process.env.BASE_URL;
 const app = express();
+const compressPDF = require("./compress");
 
-function setupMiddleware() {
-  app.use(cors());
-  app.use("/images", express.static(process.env.IMAGE_DIRECTORY));
-  app.use(bodyParser.urlencoded({ extended: true }));
-  app.options("/upload-image", cors());
-}
+app.use("/images", express.static(process.env.IMAGE_DIRECTORY));
+app.use(bodyParser.urlencoded({ extended: true }));
+
 if (!process.env.IMAGE_DIRECTORY) {
   throw new Error(
     "Environment variables for paths are not properly configured."
@@ -84,82 +82,90 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
     const outputDirectory = process.env.IMAGE_DIRECTORY;
     const quality = 80;
     const maxSizeInBytes = 200 * 1024;
+    const compressedFilePaths = [];
 
-    const imageProcessingPromises = req.files.map(async (file) => {
+    const fileProcessingPromises = req.files.map(async (file) => {
       if (!validateFileType(file)) {
         throw new Error(`Invalid file type: ${file.originalname}`);
       }
       if (file.mimetype === "application/pdf") {
-        const publicURL = `${baseURL}${file.originalname}`;
-        const pdfFilePath = path.join(outputDirectory, file.originalname);
-        fs.writeFileSync(pdfFilePath, file.buffer);
-        console.log(`PDF saved: ${pdfFilePath}`);
-        return {
-          originalFilename: file.originalname,
-          downloadLink: publicURL,
-        };
-      }
-
-      const inputImageBuffer = file.buffer;
-      const originalFilename = file.originalname;
-
-      const imageBufferLength = inputImageBuffer.length;
-
-      if (imageBufferLength <= maxSizeInBytes) {
-        // For smaller images, save in the same directory as compressed images
+        const inputBuffer = file.buffer;
         try {
+          const outputPath = await compressPDF(file.originalname, inputBuffer);
+          compressedFilePaths.push(outputPath);
+          const publicURL = `${baseURL}${file.originalname}`;
+          return {
+            originalFilename: file.originalname,
+            downloadLink: publicURL,
+          };
+        } catch (error) {
+          console.log("Compression failed: " + error.message);
+          return null;
+        }
+      } else {
+        const inputImageBuffer = file.buffer;
+        const originalFilename = file.originalname;
+
+        const imageBufferLength = inputImageBuffer.length;
+
+        if (imageBufferLength <= maxSizeInBytes) {
+          // For smaller images, save in the same directory as compressed images
+          try {
+            const compressedFileName = `${originalFilename}`;
+            const compressedImagePath = path.join(
+              outputDirectory,
+              compressedFileName
+            );
+            // Save the smaller image to the directory for compressed images
+            fs.writeFileSync(compressedImagePath, inputImageBuffer);
+            console.log(`Image optimized: ${compressedImagePath}`);
+
+            const publicURL = `${baseURL}${compressedFileName}`;
+            return {
+              originalFilename,
+              downloadLink: publicURL,
+            };
+          } catch (error) {
+            throw new Error(`Error optimizing image: ${error}`);
+          }
+        } else {
+          const { width, height } = await getImageDimensions(inputImageBuffer);
+          // Process larger images
           const compressedFileName = `${originalFilename}`;
           const compressedImagePath = path.join(
             outputDirectory,
             compressedFileName
           );
-          // Save the smaller image to the directory for compressed images
-          fs.writeFileSync(compressedImagePath, inputImageBuffer);
-          console.log(`Image optimized: ${compressedImagePath}`);
+
+          const maxHeight = Math.floor(height / 3);
+          const maxWidth = Math.floor(width / 3);
+
+          // Process each image from buffer and save the compressed version
+          await optimizeImage(
+            inputImageBuffer,
+            compressedImagePath,
+            maxWidth,
+            maxHeight,
+            quality
+          );
 
           const publicURL = `${baseURL}${compressedFileName}`;
           return {
             originalFilename,
             downloadLink: publicURL,
           };
-        } catch (error) {
-          throw new Error(`Error optimizing image: ${error}`);
         }
-      } else {
-        const { width, height } = await getImageDimensions(inputImageBuffer);
-        // Process larger images
-        const compressedFileName = `${originalFilename}`;
-        const compressedImagePath = path.join(
-          outputDirectory,
-          compressedFileName
-        );
-
-        const maxHeight = Math.floor(height / 3);
-        const maxWidth = Math.floor(width / 3);
-
-        // Process each image from buffer and save the compressed version
-        await optimizeImage(
-          inputImageBuffer,
-          compressedImagePath,
-          maxWidth,
-          maxHeight,
-          quality
-        );
-
-        const publicURL = `${baseURL}${compressedFileName}`;
-        return {
-          originalFilename,
-          downloadLink: publicURL,
-        };
       }
     });
+
     // Execute all image processing promises
-    const processedImages = await Promise.all(imageProcessingPromises);
+    const processedFiles = await Promise.all(fileProcessingPromises);
+    const validFiles = processedFiles.filter((file) => file !== null);
 
     res.status(200).json({
-      message: "Images saved at:",
+      message: "Files processed successfully.",
       outputDirectory,
-      processedImages,
+      processedFiles: validFiles,
     });
   } catch (error) {
     res.status(500).json({
@@ -168,7 +174,6 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
     });
   }
 });
-setupMiddleware();
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
