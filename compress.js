@@ -1,50 +1,88 @@
-const { exec } = require("child_process");
+const { spawn } = require("child_process");
 const path = require("path");
 const streamifier = require("streamifier");
-const baseURL = process.env.BASE_URL;
+const baseURL = process.env.BASE_URL || "http://localhost:3000/images/";
+const fs = require("fs");
 
 async function compressPDF(originalFilename, inputBuffer) {
   return new Promise((resolve, reject) => {
     const outputDirectory = process.env.IMAGE_DIRECTORY || "compressed/";
-    const outputFileName = `${originalFilename}.pdf`; // Using the original filename for the compressed PDF
-
-    const command = `gswin64c -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -dDetectDuplicateImages=true -dDownsampleColorImages=true -dColorImageResolution=150 -dColorImageDownsampleThreshold=1.0 -dDownsampleGrayImages=true -dGrayImageResolution=150 -dGrayImageDownsampleThreshold=1.0 -dDownsampleMonoImages=true -dMonoImageResolution=150 -dMonoImageDownsampleThreshold=1.0 -sOutputFile=${path.join(
+    const originalFilePath = path.join(
       outputDirectory,
-      outputFileName
-    )} -`;
+      `${originalFilename}_original.pdf`
+    );
+    const compressedFilePath = path.join(
+      outputDirectory,
+      `${originalFilename}_compressed.pdf`
+    );
 
-    const pdfProcessor = exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Error compressing PDF: ${stderr}`);
-        reject(error);
+    fs.writeFileSync(originalFilePath, inputBuffer);
+
+    const originalFileSize = fs.statSync(originalFilePath).size;
+
+    const args = [
+      "-sDEVICE=pdfwrite",
+      "-dCompatibilityLevel=1.4",
+      "-dPDFSETTINGS=/screen",
+      "-dNOPAUSE",
+      "-dQUIET",
+      "-dBATCH",
+      "-dDetectDuplicateImages=true",
+      "-dDownsampleColorImages=true",
+      "-dColorImageResolution=150",
+      "-dColorImageDownsampleThreshold=1.0",
+      "-dDownsampleGrayImages=true",
+      "-dGrayImageResolution=150",
+      "-dGrayImageDownsampleThreshold=1.0",
+      "-dDownsampleMonoImages=true",
+      "-dMonoImageResolution=150",
+      "-dMonoImageDownsampleThreshold=1.0",
+      `-sOutputFile=${compressedFilePath}`,
+      originalFilePath,
+    ];
+
+    const pdfProcessor = spawn("gswin64c", args);
+
+    pdfProcessor.stderr.on("data", (data) => {
+      console.error(`stderr: ${data}`);
+    });
+
+    pdfProcessor.on("close", (code) => {
+      if (code === 0) {
+        const compressedFileSize = fs.statSync(compressedFilePath).size;
+
+        if (compressedFileSize >= originalFileSize) {
+          fs.unlinkSync(compressedFilePath);
+          resolve(originalFilePath);
+        } else {
+          fs.unlinkSync(originalFilePath);
+          resolve(compressedFilePath);
+          const publicURL = `${baseURL}${originalFilename}`;
+          console.log("Pdf Link", publicURL);
+        }
       } else {
-        const compressedFilePath = path.join(outputDirectory, outputFileName);
-        resolve(compressedFilePath);
-        const publicURL = `${baseURL}${originalFilename}`;
-        console.log("Pdf Link", publicURL);
+        console.error(`Ghostscript process exited with code ${code}`);
+        reject(new Error(`Ghostscript process exited with code ${code}`));
       }
     });
 
-    pdfProcessor.stdin.on("error", (err) => {
-      console.error("Error writing to Ghostscript:", err);
+    pdfProcessor.on("error", (err) => {
+      console.error("Spawn error:", err);
       reject(err);
     });
 
-    pdfProcessor.on("exit", (code, signal) => {
-      if (code !== 0) {
-        console.error(
-          `Ghostscript process exited with code ${code} and signal ${signal}`
-        );
-        reject(
-          new Error(
-            `Ghostscript process exited with code ${code} and signal ${signal}`
-          )
-        );
-      }
+    const inputStream = streamifier.createReadStream(inputBuffer);
+
+    inputStream.on("end", () => {
+      console.log("Input stream ended.");
+      // Optionally, you can also close the child process's stdin explicitly if needed.
+      pdfProcessor.stdin.end();
     });
 
-    const inputStream = streamifier.createReadStream(inputBuffer);
-    inputStream.pipe(pdfProcessor.stdin);
+    pdfProcessor.stdin.on("end", () => {
+      console.log("Child process stdin ended.");
+      // You might add some handling here if required.
+    });
   });
 }
 

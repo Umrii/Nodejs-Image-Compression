@@ -177,4 +177,4 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
-app.options("/upload-image", cors());
+app.options("/upload-images", cors());
