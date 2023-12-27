@@ -1,16 +1,12 @@
 const { spawn } = require("child_process");
 const path = require("path");
 const streamifier = require("streamifier");
-const baseURL = process.env.BASE_URL || "http://localhost:3000/images/";
 const fs = require("fs");
 
 async function compressPDF(originalFilename, inputBuffer) {
   return new Promise((resolve, reject) => {
     const outputDirectory = process.env.IMAGE_DIRECTORY || "compressed/";
-    const originalFilePath = path.join(
-      outputDirectory,
-      `${originalFilename}_original.pdf`
-    );
+    const originalFilePath = path.join(outputDirectory, originalFilename); // Keep the original file name
     const compressedFilePath = path.join(
       outputDirectory,
       `${originalFilename}_compressed.pdf`
@@ -54,11 +50,13 @@ async function compressPDF(originalFilename, inputBuffer) {
         if (compressedFileSize >= originalFileSize) {
           fs.unlinkSync(compressedFilePath);
           resolve(originalFilePath);
+          console.log(`PDF Optimized: ${originalFilePath}`);
         } else {
           fs.unlinkSync(originalFilePath);
-          resolve(compressedFilePath);
-          const publicURL = `${baseURL}${originalFilename}`;
-          console.log("Pdf Link", publicURL);
+          fs.renameSync(compressedFilePath, originalFilePath);
+          resolve(originalFilePath);
+
+          console.log(`PDF Optimized: ${originalFilePath}`);
         }
       } else {
         console.error(`Ghostscript process exited with code ${code}`);
@@ -75,13 +73,11 @@ async function compressPDF(originalFilename, inputBuffer) {
 
     inputStream.on("end", () => {
       console.log("Input stream ended.");
-      // Optionally, you can also close the child process's stdin explicitly if needed.
       pdfProcessor.stdin.end();
     });
 
     pdfProcessor.stdin.on("end", () => {
       console.log("Child process stdin ended.");
-      // You might add some handling here if required.
     });
   });
 }
