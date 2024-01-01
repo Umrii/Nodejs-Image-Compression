@@ -12,7 +12,6 @@ const cors = require("cors");
 
 const app = express();
 
-app.use("/images", express.static(process.env.IMAGE_DIRECTORY));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors({ origin: "http://localhost", credentials: true }));
 app.use(cors());
@@ -59,12 +58,20 @@ const allowedImageTypes = [
   "image/gif",
   "application/pdf",
 ];
+const unsupportedFileTypes = [
+  "image/heic", // Add any other unsupported types here
+  "image/bmp",
+  "text/plain",
+];
 
 function validateFileType(file) {
   return allowedImageTypes.includes(file.mimetype);
 }
+function isUnsupportedFileType(file) {
+  return unsupportedFileTypes.includes(file.mimetype);
+}
 
-app.post("/upload-images", upload.array("images"), async (req, res) => {
+app.post("/upload-images", upload.any(), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       throw new Error("Please upload at least one valid image file.");
@@ -76,6 +83,16 @@ app.post("/upload-images", upload.array("images"), async (req, res) => {
     const compressedFilePaths = [];
 
     const fileProcessingPromises = req.files.map(async (file) => {
+      if (isUnsupportedFileType(file)) {
+        const unsupportedFileName = `${file.originalname}`;
+        const unsupportedFilePath = path.join(
+          outputDirectory,
+          unsupportedFileName
+        );
+        fs.writeFileSync(unsupportedFilePath, file.buffer);
+        console.log(`Unsupported file copied: ${unsupportedFilePath}`);
+        return null;
+      }
       if (!validateFileType(file)) {
         throw new Error(`Invalid file type: ${file.originalname}`);
       }
