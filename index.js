@@ -58,17 +58,9 @@ const allowedImageTypes = [
   "image/gif",
   "application/pdf",
 ];
-const unsupportedFileTypes = [
-  "image/heic", // Add any other unsupported types here
-  "image/bmp",
-  "text/plain",
-];
 
 function validateFileType(file) {
   return allowedImageTypes.includes(file.mimetype);
-}
-function isUnsupportedFileType(file) {
-  return unsupportedFileTypes.includes(file.mimetype);
 }
 
 app.post("/upload-images", upload.any(), async (req, res) => {
@@ -83,7 +75,7 @@ app.post("/upload-images", upload.any(), async (req, res) => {
     const compressedFilePaths = [];
 
     const fileProcessingPromises = req.files.map(async (file) => {
-      if (isUnsupportedFileType(file)) {
+      if (!validateFileType(file)) {
         const unsupportedFileName = `${file.originalname}`;
         const unsupportedFilePath = path.join(
           outputDirectory,
@@ -92,9 +84,6 @@ app.post("/upload-images", upload.any(), async (req, res) => {
         fs.writeFileSync(unsupportedFilePath, file.buffer);
         console.log(`Unsupported file copied: ${unsupportedFilePath}`);
         return null;
-      }
-      if (!validateFileType(file)) {
-        throw new Error(`Invalid file type: ${file.originalname}`);
       }
 
       if (file.mimetype === "application/pdf") {
