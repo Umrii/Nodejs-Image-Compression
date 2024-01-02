@@ -21,7 +21,6 @@ if (!process.env.IMAGE_DIRECTORY) {
     "Environment variables for paths are not properly configured."
   );
 }
-
 async function optimizeImage(
   inputPath,
   outputPath,
@@ -39,7 +38,8 @@ async function optimizeImage(
 
     console.log(`Image Optimized: ${outputPath}`);
   } catch (error) {
-    throw new Error(`Error optimizing image: ${error}`);
+    console.log("Unsupported Image Format");
+    fs.writeFileSync(compressedImagePath, inputImageBuffer);
   }
 }
 
@@ -125,15 +125,33 @@ app.post("/upload-images", upload.any(), async (req, res) => {
 
           const maxHeight = Math.floor(height / 3);
           const maxWidth = Math.floor(width / 3);
-
-          await optimizeImage(
-            inputImageBuffer,
-            compressedImagePath,
-            maxWidth,
-            maxHeight,
-            quality
-          );
-          return { originalFilename };
+          try {
+            await optimizeImage(
+              inputImageBuffer,
+              compressedImagePath,
+              maxWidth,
+              maxHeight,
+              quality
+            );
+            return { originalFilename };
+          } catch (optimizationError) {
+            try {
+              const originalFilePath = path.join(
+                outputDirectory,
+                file.originalname
+              );
+              fs.writeFileSync(originalFilePath, file.buffer);
+              console.log(
+                `Unsupported Format Image is copied as: ${originalFilePath}`
+              );
+              return { originalFilename: file.originalname };
+            } catch (copyError) {
+              console.error(
+                "Unsupported Format, Failed to copy image:",
+                copyError.message
+              );
+            }
+          }
         }
       }
     });
