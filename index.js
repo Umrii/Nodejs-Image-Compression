@@ -75,6 +75,7 @@ app.post("/upload-images", upload.any(), async (req, res) => {
     const compressedFilePaths = [];
 
     const fileProcessingPromises = req.files.map(async (file) => {
+      console.log(file.buffer);
       if (!validateFileType(file)) {
         const unsupportedFileName = `${file.originalname}`;
         const unsupportedFilePath = path.join(
@@ -123,8 +124,8 @@ app.post("/upload-images", upload.any(), async (req, res) => {
             compressedFileName
           );
 
-          const maxHeight = Math.floor(height / 3);
-          const maxWidth = Math.floor(width / 3);
+          const maxHeight = height;
+          const maxWidth = width;
           try {
             await optimizeImage(
               inputImageBuffer,
