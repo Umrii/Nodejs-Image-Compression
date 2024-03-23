@@ -124,8 +124,8 @@ app.post("/upload-images", upload.any(), async (req, res) => {
             compressedFileName
           );
 
-          const maxHeight = height;
-          const maxWidth = width;
+          const maxHeight = MATH.floor(height / 1.1);
+          const maxWidth = MATH.floor(width / 1.1);
           try {
             await optimizeImage(
               inputImageBuffer,
